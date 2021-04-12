@@ -6,12 +6,12 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"os/exec"
 	"strconv"
 	"strings"
 
 	"github.com/gabrie30/ghorg/colorlog"
 	"github.com/gabrie30/ghorg/configs"
+	"github.com/gabrie30/ghorg/git"
 	"github.com/gabrie30/ghorg/scm"
 	"github.com/korovkin/limiter"
 	"github.com/spf13/cobra"
@@ -190,7 +190,8 @@ func cloneFunc(cmd *cobra.Command, argz []string) {
 	args = argz
 	targetCloneSource = argz[0]
 
-	CloneAllRepos()
+	g := git.NewGit()
+	CloneAllRepos(g)
 }
 
 // TODO: Figure out how to use go channels for this
@@ -286,8 +287,18 @@ func readGhorgIgnore() ([]string, error) {
 	return lines, scanner.Err()
 }
 
+type Gitter interface {
+	Clone(string, string) error
+	Reset(string, string) error
+	Pull(string, string) error
+	SetOrigin(string, string) error
+	Clean(string) error
+	Checkout(string, string) error
+	UpdateRemote(string) error
+}
+
 // CloneAllRepos clones all repos
-func CloneAllRepos() {
+func CloneAllRepos(git Gitter) {
 	// resc, errc, infoc := make(chan string), make(chan error), make(chan error)
 
 	var cloneTargets []scm.Repo
@@ -378,9 +389,8 @@ func CloneAllRepos() {
 
 			if repoExistsLocally(repoDir) == true {
 				if os.Getenv("GHORG_BACKUP") == "true" {
-					cmd := exec.Command("git", "remote", "update")
-					cmd.Dir = repoDir
-					err := cmd.Run()
+					err := git.UpdateRemote(repoDir)
+
 					if err != nil {
 						e := fmt.Sprintf("Could not update remotes in Repo: %s Error: %v", repo.URL, err)
 						cloneErrors = append(cloneErrors, e)
@@ -388,37 +398,32 @@ func CloneAllRepos() {
 					}
 				} else {
 
-					cmd := exec.Command("git", "checkout", branch)
-					cmd.Dir = repoDir
-					err := cmd.Run()
+					err := git.Checkout(branch, repoDir)
+
 					if err != nil {
 						e := fmt.Sprintf("Could not checkout out %s, branch may not exist, no changes made Repo: %s Error: %v", branch, repo.URL, err)
 						cloneInfos = append(cloneInfos, e)
 						return
 					}
 
-					cmd = exec.Command("git", "clean", "-f", "-d")
-					cmd.Dir = repoDir
-					err = cmd.Run()
+					err = git.Clean(repoDir)
+
 					if err != nil {
 						e := fmt.Sprintf("Problem running git clean: %s Error: %v", repo.URL, err)
 						cloneErrors = append(cloneErrors, e)
 						return
 					}
 
-					cmd = exec.Command("git", "reset", "--hard", "origin/"+branch)
-					cmd.Dir = repoDir
-					err = cmd.Run()
+					err = git.Reset(branch, repoDir)
+
 					if err != nil {
 						e := fmt.Sprintf("Problem resetting %s Repo: %s Error: %v", branch, repo.URL, err)
 						cloneErrors = append(cloneErrors, e)
 						return
 					}
 
-					// TODO: handle case where repo was removed, should not give user an error
-					cmd = exec.Command("git", "pull", "origin", branch)
-					cmd.Dir = repoDir
-					err = cmd.Run()
+					err = git.Pull(branch, repoDir)
+
 					if err != nil {
 						e := fmt.Sprintf("Problem trying to pull %v Repo: %s Error: %v", branch, repo.URL, err)
 						cloneErrors = append(cloneErrors, e)
@@ -428,13 +433,7 @@ func CloneAllRepos() {
 			} else {
 				// if https clone and github/gitlab add personal access token to url
 
-				args := []string{"clone", repo.CloneURL, repoDir}
-				if os.Getenv("GHORG_BACKUP") == "true" {
-					args = append(args, "--mirror")
-				}
-
-				cmd := exec.Command("git", args...)
-				err := cmd.Run()
+				err = git.Clone(repo.CloneURL, repoDir)
 
 				if err != nil {
 					e := fmt.Sprintf("Problem trying to clone Repo: %s Error: %v", repo.URL, err)
@@ -442,12 +441,7 @@ func CloneAllRepos() {
 					return
 				}
 
-				// TODO: make configs around remote name
-				// we clone with api-key in clone url
-				args = []string{"remote", "set-url", "origin", repo.URL}
-				cmd = exec.Command("git", args...)
-				cmd.Dir = repoDir
-				err = cmd.Run()
+				err = git.SetOrigin(repo.URL, repoDir)
 
 				if err != nil {
 					e := fmt.Sprintf("Problem trying to set remote on Repo: %s Error: %v", repo.URL, err)
