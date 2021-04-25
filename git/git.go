@@ -3,16 +3,18 @@ package git
 import (
 	"os"
 	"os/exec"
+
+	"github.com/gabrie30/ghorg/scm"
 )
 
-type Gitter struct{}
+type GitClient struct{}
 
-func NewGit() Gitter {
-	return Gitter{}
+func NewGit() GitClient {
+	return GitClient{}
 }
 
-func (g Gitter) Clone(cloneURL string, repoDir string) error {
-	args := []string{"clone", cloneURL, repoDir}
+func (g GitClient) Clone(repo scm.Repo) error {
+	args := []string{"clone", repo.CloneURL, repo.HostPath}
 	if os.Getenv("GHORG_BACKUP") == "true" {
 		args = append(args, "--mirror")
 	}
@@ -22,42 +24,42 @@ func (g Gitter) Clone(cloneURL string, repoDir string) error {
 	return err
 }
 
-func (g Gitter) SetOrigin(repoURL string, repoDir string) error {
+func (g GitClient) SetOrigin(repo scm.Repo) error {
 	// TODO: make configs around remote name
 	// we clone with api-key in clone url
-	args := []string{"remote", "set-url", "origin", repoURL}
+	args := []string{"remote", "set-url", "origin", repo.URL}
 	cmd := exec.Command("git", args...)
-	cmd.Dir = repoDir
+	cmd.Dir = repo.HostPath
 	return cmd.Run()
 }
 
-func (g Gitter) Checkout(branch string, repoDir string) error {
-	cmd := exec.Command("git", "checkout", branch)
-	cmd.Dir = repoDir
+func (g GitClient) Checkout(repo scm.Repo) error {
+	cmd := exec.Command("git", "checkout", repo.CloneBranch)
+	cmd.Dir = repo.HostPath
 	return cmd.Run()
 }
 
-func (g Gitter) Clean(repoDir string) error {
+func (g GitClient) Clean(repo scm.Repo) error {
 	cmd := exec.Command("git", "clean", "-f", "-d")
-	cmd.Dir = repoDir
+	cmd.Dir = repo.HostPath
 	return cmd.Run()
 }
 
-func (g Gitter) UpdateRemote(repoDir string) error {
+func (g GitClient) UpdateRemote(repo scm.Repo) error {
 	cmd := exec.Command("git", "remote", "update")
-	cmd.Dir = repoDir
+	cmd.Dir = repo.HostPath
 	return cmd.Run()
 }
 
-func (g Gitter) Pull(branch string, repoDir string) error {
+func (g GitClient) Pull(repo scm.Repo) error {
 	// TODO: handle case where repo was removed, should not give user an error
-	cmd := exec.Command("git", "pull", "origin", branch)
-	cmd.Dir = repoDir
+	cmd := exec.Command("git", "pull", "origin", repo.CloneBranch)
+	cmd.Dir = repo.HostPath
 	return cmd.Run()
 }
 
-func (g Gitter) Reset(branch string, repoDir string) error {
-	cmd := exec.Command("git", "reset", "--hard", "origin/"+branch)
-	cmd.Dir = repoDir
+func (g GitClient) Reset(repo scm.Repo) error {
+	cmd := exec.Command("git", "reset", "--hard", "origin/"+repo.CloneBranch)
+	cmd.Dir = repo.HostPath
 	return cmd.Run()
 }

@@ -288,13 +288,13 @@ func readGhorgIgnore() ([]string, error) {
 }
 
 type Gitter interface {
-	Clone(string, string) error
-	Reset(string, string) error
-	Pull(string, string) error
-	SetOrigin(string, string) error
-	Clean(string) error
-	Checkout(string, string) error
-	UpdateRemote(string) error
+	Clone(scm.Repo) error
+	Reset(scm.Repo) error
+	Pull(scm.Repo) error
+	SetOrigin(scm.Repo) error
+	Clean(scm.Repo) error
+	Checkout(scm.Repo) error
+	UpdateRemote(scm.Repo) error
 }
 
 // CloneAllRepos clones all repos
@@ -369,27 +369,27 @@ func CloneAllRepos(git Gitter) {
 	}
 
 	limit := limiter.NewConcurrencyLimiter(l)
-	for _, target := range cloneTargets {
-		appName := getAppNameFromURL(target.URL)
-		branch := target.CloneBranch
-		repo := target
+	for i := range cloneTargets {
+		repo := cloneTargets[i]
+		repo.Name = getAppNameFromURL(repo.URL)
 
 		limit.Execute(func() {
 
-			path := appName
+			finalPath := repo.Name
+
 			if repo.Path != "" && os.Getenv("GHORG_PRESERVE_DIRECTORY_STRUCTURE") == "true" {
-				path = repo.Path
+				finalPath = repo.Path
 			}
 
-			repoDir := os.Getenv("GHORG_ABSOLUTE_PATH_TO_CLONE_TO") + parentFolder + "_ghorg" + "/" + path
+			repo.HostPath = os.Getenv("GHORG_ABSOLUTE_PATH_TO_CLONE_TO") + parentFolder + "_ghorg" + "/" + finalPath
 
 			if os.Getenv("GHORG_BACKUP") == "true" {
-				repoDir = os.Getenv("GHORG_ABSOLUTE_PATH_TO_CLONE_TO") + parentFolder + "_ghorg_backup" + "/" + path
+				repo.HostPath = os.Getenv("GHORG_ABSOLUTE_PATH_TO_CLONE_TO") + parentFolder + "_ghorg_backup" + "/" + finalPath
 			}
 
-			if repoExistsLocally(repoDir) == true {
+			if repoExistsLocally(repo.HostPath) == true {
 				if os.Getenv("GHORG_BACKUP") == "true" {
-					err := git.UpdateRemote(repoDir)
+					err := git.UpdateRemote(repo)
 
 					if err != nil {
 						e := fmt.Sprintf("Could not update remotes in Repo: %s Error: %v", repo.URL, err)
@@ -398,15 +398,15 @@ func CloneAllRepos(git Gitter) {
 					}
 				} else {
 
-					err := git.Checkout(branch, repoDir)
+					err := git.Checkout(repo)
 
 					if err != nil {
-						e := fmt.Sprintf("Could not checkout out %s, branch may not exist, no changes made Repo: %s Error: %v", branch, repo.URL, err)
+						e := fmt.Sprintf("Could not checkout out %s, branch may not exist, no changes made Repo: %s Error: %v", repo.CloneBranch, repo.URL, err)
 						cloneInfos = append(cloneInfos, e)
 						return
 					}
 
-					err = git.Clean(repoDir)
+					err = git.Clean(repo)
 
 					if err != nil {
 						e := fmt.Sprintf("Problem running git clean: %s Error: %v", repo.URL, err)
@@ -414,18 +414,18 @@ func CloneAllRepos(git Gitter) {
 						return
 					}
 
-					err = git.Reset(branch, repoDir)
+					err = git.Reset(repo)
 
 					if err != nil {
-						e := fmt.Sprintf("Problem resetting %s Repo: %s Error: %v", branch, repo.URL, err)
+						e := fmt.Sprintf("Problem resetting %s Repo: %s Error: %v", repo.CloneBranch, repo.URL, err)
 						cloneErrors = append(cloneErrors, e)
 						return
 					}
 
-					err = git.Pull(branch, repoDir)
+					err = git.Pull(repo)
 
 					if err != nil {
-						e := fmt.Sprintf("Problem trying to pull %v Repo: %s Error: %v", branch, repo.URL, err)
+						e := fmt.Sprintf("Problem trying to pull %v Repo: %s Error: %v", repo.CloneBranch, repo.URL, err)
 						cloneErrors = append(cloneErrors, e)
 						return
 					}
@@ -433,7 +433,7 @@ func CloneAllRepos(git Gitter) {
 			} else {
 				// if https clone and github/gitlab add personal access token to url
 
-				err = git.Clone(repo.CloneURL, repoDir)
+				err = git.Clone(repo)
 
 				if err != nil {
 					e := fmt.Sprintf("Problem trying to clone Repo: %s Error: %v", repo.URL, err)
@@ -441,7 +441,7 @@ func CloneAllRepos(git Gitter) {
 					return
 				}
 
-				err = git.SetOrigin(repo.URL, repoDir)
+				err = git.SetOrigin(repo)
 
 				if err != nil {
 					e := fmt.Sprintf("Problem trying to set remote on Repo: %s Error: %v", repo.URL, err)
@@ -450,7 +450,7 @@ func CloneAllRepos(git Gitter) {
 				}
 			}
 
-			colorlog.PrintSuccess("Success cloning repo: " + repo.URL + " -> branch: " + branch)
+			colorlog.PrintSuccess("Success cloning repo: " + repo.URL + " -> branch: " + repo.CloneBranch)
 		})
 
 	}
